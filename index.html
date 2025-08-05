@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Emoji Invaders - Mobile Buttons Fixed</title>
+<style>
+  * {
+    margin: 0; padding: 0; box-sizing: border-box;
+  }
+  body {
+    background: black;
+    font-family: Arial, sans-serif;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+  }
+  canvas {
+    background: #111;
+    border: 2px solid white;
+    margin-top: 10px;
+  }
+  #gameUI {
+    width: 600px;
+    max-width: 100vw;
+    margin-top: 10px;
+    text-align: center;
+  }
+  #stats {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 8px;
+    font-size: 20px;
+  }
+  #healthBarContainer {
+    width: 100%;
+    background: #444;
+    border-radius: 12px;
+    overflow: hidden;
+    height: 22px;
+    margin-bottom: 10px;
+  }
+  #healthBar {
+    height: 100%;
+    background: red;
+    width: 100%;
+    transition: width 0.2s ease;
+  }
+  /* Mobile Controls */
+  #mobileControls {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .controlBtn {
+    background: #222;
+    border: 2px solid white;
+    color: white;
+    font-size: 30px;
+    padding: 12px 18px;
+    border-radius: 10px;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  .controlBtn:active {
+    background: #555;
+  }
+  #shootBtn {
+    background: red;
+    color: white;
+    font-weight: bold;
+    font-size: 24px;
+    padding: 12px 25px;
+  }
+  #homeScreen, #shopScreen {
+    position: fixed;
+    top:0; left:0;
+    width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.95);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 25px;
+    z-index: 10;
+  }
+  #shopScreen.hidden, #homeScreen.hidden {
+    display: none;
+  }
+  button {
+    cursor: pointer;
+    border-radius: 6px;
+    border: 2px solid white;
+    background: #222;
+    color: white;
+    padding: 14px 28px;
+    font-size: 18px;
+    transition: background 0.3s;
+  }
+  button:hover {
+    background: #444;
+  }
+  .shop-section {
+    width: 90vw;
+    max-width: 600px;
+    text-align: center;
+  }
+  .shop-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 10px;
+  }
+  .shop-button {
+    min-width: 100px;
+    padding: 12px 10px;
+    border: 2px solid white;
+    background: #222;
+    color: white;
+    font-size: 20px;
+    border-radius: 6px;
+  }
+  .shop-button:hover {
+    border-color: yellow;
+  }
+  .shop-button.selected {
+    border-color: yellow;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+
+<!-- Canvas -->
+<canvas id="gameCanvas" width="600" height="600"></canvas>
+
+<!-- Game UI Below Canvas -->
+<div id="gameUI" class="hidden">
+  <div id="stats">
+    <div>Score: <span id="score">0</span></div>
+    <div>High Score: <span id="highScore">0</span></div>
+    <div>Coins: 🟡 <span id="coinCount">0</span></div>
+  </div>
+  <div id="healthBarContainer">
+    <div id="healthBar"></div>
+  </div>
+
+  <!-- Mobile Controls -->
+  <div id="mobileControls">
+    <button id="leftBtn" class="controlBtn">⬅</button>
+    <button id="shootBtn" class="controlBtn">🔴 Shoot</button>
+    <button id="rightBtn" class="controlBtn">➡</button>
+  </div>
+</div>
+
+<!-- Home Screen -->
+<div id="homeScreen">
+  <h1>Emoji Invaders</h1>
+  <button onclick="startGame()">▶ Play</button>
+  <button onclick="showShop()">🛍️ Shop</button>
+</div>
+
+<!-- Shop Screen -->
+<div id="shopScreen" class="hidden">
+  <h2>🛍️ Shop</h2>
+  <p>Coins: 🟡 <span id="coinCountShop">0</span></p>
+
+  <div class="shop-section">
+    <h3>🔫 Bullet Skins</h3>
+    <div id="bulletShop" class="shop-row"></div>
+  </div>
+
+  <div class="shop-section">
+    <h3>🙂 Player Skins</h3>
+    <div id="playerShop" class="shop-row"></div>
+  </div>
+
+  <button onclick="hideShop()">⬅ Back</button>
+</div>
+
+<script>
+  // Elements & Context
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const homeScreen = document.getElementById('homeScreen');
+  const shopScreen = document.getElementById('shopScreen');
+  const gameUI = document.getElementById('gameUI');
+  const scoreEl = document.getElementById('score');
+  const highScoreEl = document.getElementById('highScore');
+  const coinCountEl = document.getElementById('coinCount');
+  const coinCountShopEl = document.getElementById('coinCountShop');
+  const healthBar = document.getElementById('healthBar');
+  const bulletShopDiv = document.getElementById('bulletShop');
+  const playerShopDiv = document.getElementById('playerShop');
+
+  // Mobile buttons
+  const leftBtn = document.getElementById('leftBtn');
+  const rightBtn = document.getElementById('rightBtn');
+  const shootBtn = document.getElementById('shootBtn');
+
+  // Skins info
+  const bulletSkins = [
+    { symbol: '.', color: 'white', price: 0 },
+    { symbol: '.', color: 'blue', price: 10 },
+    { symbol: '.', color: 'red', price: 10 },
+    { symbol: '.', color: 'purple', price: 25 },
+    { symbol: '.', color: 'green', price: 50 }
+  ];
+  const playerSkins = [
+    { emoji: '😀', price: 0 },
+    { emoji: '🤯', price: 25 },
+    { emoji: '🫥', price: 50 },
+    { emoji: '👽', price: 75 }
+  ];
+
+  // Game state
+  let keys = {};
+  let bullets = [], enemies = [], enemyBullets = [], coins = [];
+  let player = { x: 285, y: 550, width: 30, height: 30 };
+  let score = 0, highScore = 0, coinsCollected = 0;
+  let canShoot = true;
+  let selectedBullet = 0, selectedPlayer = 0;
+  let ownedBullets = [0], ownedPlayers = [0];
+  let gameRunning = false;
+  let health = 50; // Player health starts at 50
+
+  // Save/load local storage
+  function save() {
+    localStorage.setItem('highScore', highScore);
+    localStorage.setItem('coins', coinsCollected);
+    localStorage.setItem('ownedBullets', JSON.stringify(ownedBullets));
+    localStorage.setItem('ownedPlayers', JSON.stringify(ownedPlayers));
+    localStorage.setItem('selectedBullet', selectedBullet);
+    localStorage.setItem('selectedPlayer', selectedPlayer);
+  }
+  function load() {
+    highScore = +localStorage.getItem('highScore') || 0;
+    coinsCollected = +localStorage.getItem('coins') || 0;
+    ownedBullets = JSON.parse(localStorage.getItem('ownedBullets')) || [0];
+    ownedPlayers = JSON.parse(localStorage.getItem('ownedPlayers')) || [0];
+    selectedBullet = +localStorage.getItem('selectedBullet') || 0;
+    selectedPlayer = +localStorage.getItem('selectedPlayer') || 0;
+    updateUI();
+  }
+
+  // Update UI
+  function updateUI() {
+    scoreEl.textContent = score;
+    highScoreEl.textContent = highScore;
+    coinCountEl.textContent = coinsCollected;
+    coinCountShopEl.textContent = coinsCollected;
+    // Update health bar width
+    healthBar.style.width = (health / 50 * 100) + '%';
+  }
+
+  // Draw game elements
+  function drawPlayer() {
+    ctx.font = '30px Arial';
+    ctx.fillText(playerSkins[selectedPlayer].emoji, player.x, player.y);
+  }
+  function drawEnemies() {
+    ctx.font = '30px Arial';
+    enemies.forEach(e => {
+      ctx.fillText('👾', e.x, e.y);
+    });
+  }
+  function drawBullets() {
+    ctx.font = '25px Arial';
+    bullets.forEach(b => {
+      ctx.fillStyle = bulletSkins[selectedBullet].color;
+      ctx.fillText(b.symbol, b.x, b.y);
+    });
+    ctx.fillStyle = 'red';
+    enemyBullets.forEach(b => {
+      ctx.fillText('|', b.x, b.y);
+    });
+  }
+  function drawCoins() {
+    ctx.font = '25px Arial';
+    ctx.fillStyle = 'yellow';
+    coins.forEach(c => {
+      ctx.fillText('🟡', c.x, c.y);
+    });
+  }
+
+  // Game loop
+  function update() {
+    if (!gameRunning) return;
+
+    // Movement
+    if (keys['ArrowLeft'] || leftBtnPressed) player.x -= 6;
+    if (keys['ArrowRight'] || rightBtnPressed) player.x += 6;
+    player.x = Math.max(0, Math.min(canvas.width - 30, player.x));
+
+    // Update bullets
+    bullets.forEach(b => b.y -= 7);
+    bullets = bullets.filter(b => b.y > -10);
+
+    enemyBullets.forEach(b => b.y += 4);
+    enemyBullets = enemyBullets.filter(b => b.y < canvas.height + 10);
+
+    // Enemy shooting
+    enemies.forEach(e => {
+      if (Math.random() < 0.008) {
+        enemyBullets.push({ x: e.x + 10, y: e.y + 20 });
+      }
+    });
+
+    // Bullets hitting enemies (need 3 hits)
+    enemies.forEach((e, ei) => {
+      bullets.forEach((b, bi) => {
+        if (Math.abs(b.x - e.x) < 20 && Math.abs(b.y - e.y) < 20) {
+          bullets.splice(bi, 1);
+          e.hitCount = (e.hitCount || 0) + 1;
+          if (e.hitCount >= 3) {
+            enemies.splice(ei, 1);
+            score++;
+            coinsCollected++;
+            updateUI();
+            save();
+          }
+        }
+      });
+    });
+
+    // Bullets hitting coins
+    coins.forEach((c, ci) => {
+      bullets.forEach((b, bi) => {
+        if (Math.abs(b.x - c.x) < 20 && Math.abs(b.y - c.y) < 20) {
+          coins.splice(ci, 1);
+          bullets.splice(bi, 1);
+          coinsCollected++;
+          updateUI();
+          save();
+        }
+      });
+    });
+
+    // Enemy bullets hitting player
+    enemyBullets.forEach((b, i) => {
+      if (Math.abs(b.x - player.x) < 20 && Math.abs(b.y - player.y) < 25) {
+        enemyBullets.splice(i, 1);
+        health -= 1;
+        updateUI();
+        if (health <= 0) endGame();
+      }
+    });
+
+    // Enemies reaching player
+    enemies.forEach(e => {
+      if (e.y > player.y - 20) {
+        endGame();
+      }
+    });
+
+    render();
+    requestAnimationFrame(update);
+  }
+
+  // Render everything
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawPlayer();
+    drawEnemies();
+    drawBullets();
+    drawCoins();
+  }
+
+  // Shooting control with hold-to-shoot support
+  let shootingInterval = null;
+  function startShooting() {
+    if (shootingInterval) return;
+    shoot(); // shoot immediately
+    shootingInterval = setInterval(shoot, 200); // shoot every 200ms while holding
+  }
+  function stopShooting() {
+    if (shootingInterval) {
+      clearInterval(shootingInterval);
+      shootingInterval = null;
+    }
+  }
+
+  // Shoot a bullet
+  function shoot() {
+    if (!canShoot) return;
+    canShoot = false;
+    bullets.push({ x: player.x + 10, y: player.y - 10, symbol: bulletSkins[selectedBullet].symbol });
+    setTimeout(() => canShoot = true, 200);
+  }
+
+  // Spawn enemies and coins
+  function spawnEnemy() {
+    if (!gameRunning) return;
+    enemies.push({ x: Math.random() * 570, y: 30, hitCount: 0 });
+    setTimeout(spawnEnemy, 1200);
+  }
+  function spawnCoin() {
+    if (!gameRunning) return;
+    coins.push({ x: Math.random() * 570, y: Math.random() * 350 + 50 });
+    setTimeout(spawnCoin, 5000);
+  }
+
+  // Mobile buttons press state
+  let leftBtnPressed = false;
+  let rightBtnPressed = false;
+
+  function preventDefaultTouch(e) {
+    e.preventDefault();
+  }
+
+  leftBtn.addEventListener('touchstart', e => {
+    preventDefaultTouch(e);
+    leftBtnPressed = true;
+  });
+  leftBtn.addEventListener('touchend', e => {
+    preventDefaultTouch(e);
+    leftBtnPressed = false;
+  });
+
+  rightBtn.addEventListener('touchstart', e => {
+    preventDefaultTouch(e);
+    rightBtnPressed = true;
+  });
+  rightBtn.addEventListener('touchend', e => {
+    preventDefaultTouch(e);
+    rightBtnPressed = false;
+  });
+
+  shootBtn.addEventListener('touchstart', e => {
+    preventDefaultTouch(e);
+    startShooting();
+  });
+  shootBtn.addEventListener('touchend', e => {
+    preventDefaultTouch(e);
+    stopShooting();
+  });
+
+  // Also support mouse clicks on buttons for desktop
+  leftBtn.addEventListener('mousedown', e => {
+    leftBtnPressed = true;
+  });
+  leftBtn.addEventListener('mouseup', e => {
+    leftBtnPressed = false;
+  });
+  leftBtn.addEventListener('mouseleave', e => {
+    leftBtnPressed = false;
+  });
+
+  rightBtn.addEventListener('mousedown', e => {
+    rightBtnPressed = true;
+  });
+  rightBtn.addEventListener('mouseup', e => {
+    rightBtnPressed = false;
+  });
+  rightBtn.addEventListener('mouseleave', e => {
+    rightBtnPressed = false;
+  });
+
+  shootBtn.addEventListener('mousedown', e => {
+    startShooting();
+  });
+  shootBtn.addEventListener('mouseup', e => {
+    stopShooting();
+  });
+  shootBtn.addEventListener('mouseleave', e => {
+    stopShooting();
+  });
+
+  // Keyboard input
+  window.addEventListener('keydown', e => {
+    keys[e.key] = true;
+    if (e.key === ' ') {
+      e.preventDefault();
+      startShooting();
+    }
+  });
+  window.addEventListener('keyup', e => {
+    keys[e.key] = false;
+    if (e.key === ' ') {
+      stopShooting();
+    }
+  });
+
+  // Start game
+  function startGame() {
+    score = 0;
+    health = 50;
+    bullets = [];
+    enemies = [];
+    enemyBullets = [];
+    coins = [];
+    player.x = 285;
+    canShoot = true;
+    updateUI();
+
+    gameRunning = true;
+    homeScreen.classList.add('hidden');
+    shopScreen.classList.add('hidden');
+    gameUI.classList.remove('hidden');
+
+    spawnEnemy();
+    spawnCoin();
+    update();
+  }
+
+  // End game
+  function endGame() {
+    gameRunning = false;
+    gameUI.classList.add('hidden');
+    homeScreen.classList.remove('hidden');
+    stopShooting();
+
+    if (score > highScore) {
+      highScore = score;
+      save();
+    }
+    alert(`Game Over!\nScore: ${score}\nHigh Score: ${highScore}`);
+  }
+
+  // Shop functions
+  function showShop() {
+    homeScreen.classList.add('hidden');
+    shopScreen.classList.remove('hidden');
+    gameUI.classList.add('hidden');
+    drawShop();
+  }
+  function hideShop() {
+    shopScreen.classList.add('hidden');
+    homeScreen.classList.remove('hidden');
+    gameUI.classList.add('hidden');
+  }
+  function drawShop() {
+    coinCountShopEl.textContent = coinsCollected;
+
+    bulletShopDiv.innerHTML = '';
+    playerShopDiv.innerHTML = '';
+
+    bulletSkins.forEach((skin, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'shop-button';
+      btn.style.color = skin.color;
+      btn.textContent = `• ${skin.color.charAt(0).toUpperCase() + skin.color.slice(1)} Bullet`;
+      if (ownedBullets.includes(i)) {
+        if (selectedBullet === i) btn.classList.add('selected');
+        btn.textContent += ' (Owned)';
+      } else {
+        btn.textContent += ` - ${skin.price}🟡`;
+      }
+      btn.onclick = () => {
+        if (!ownedBullets.includes(i)) {
+          if (coinsCollected >= skin.price) {
+            coinsCollected -= skin.price;
+            ownedBullets.push(i);
+            selectedBullet = i;
+            save();
+            updateUI();
+            drawShop();
+          } else {
+            alert("Not enough coins!");
+          }
+        } else {
+          selectedBullet = i;
+          save();
+          drawShop();
+        }
+      };
+      bulletShopDiv.appendChild(btn);
+    });
+
+    playerSkins.forEach((skin, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'shop-button';
+      btn.textContent = `${skin.emoji} Player`;
+      if (ownedPlayers.includes(i)) {
+        if (selectedPlayer === i) btn.classList.add('selected');
+        btn.textContent += ' (Owned)';
+      } else {
+        btn.textContent += ` - ${skin.price}🟡`;
+      }
+      btn.onclick = () => {
+        if (!ownedPlayers.includes(i)) {
+          if (coinsCollected >= skin.price) {
+            coinsCollected -= skin.price;
+            ownedPlayers.push(i);
+            selectedPlayer = i;
+            save();
+            updateUI();
+            drawShop();
+          } else {
+            alert("Not enough coins!");
+          }
+        } else {
+          selectedPlayer = i;
+          save();
+          drawShop();
+        }
+      };
+      playerShopDiv.appendChild(btn);
+    });
+  }
+
+  // Load on page start
+  load();
+
+</script>
+</body>
+</html>
