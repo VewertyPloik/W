@@ -396,12 +396,12 @@
   function spawnEnemy() {
     if (!gameRunning) return;
     enemies.push({ x: Math.random() * 570, y: 30, hitCount: 0 });
-    setTimeout(spawnEnemy, 5000);
+    setTimeout(spawnEnemy, 10000);
   }
   function spawnCoin() {
     if (!gameRunning) return;
     coins.push({ x: Math.random() * 570, y: Math.random() * 350 + 50 });
-    setTimeout(spawnCoin, 10000);
+    setTimeout(spawnCoin, 12000);
   }
 
   // Mobile buttons press state
