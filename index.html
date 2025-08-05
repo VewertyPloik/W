@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Emoji Invaders</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: sans-serif; background: black; color: white; overflow: hidden; }
+    #gameCanvas { background: #111; display: block; margin: 0 auto; }
+    #ui, #homeScreen, #shopScreen {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 10;
+    }
+    button { padding: 10px 20px; font-size: 20px; margin: 10px; cursor: pointer; }
+    .hidden { display: none; }
+    .shopItem { margin: 10px; }
+    .selected { border: 2px solid yellow; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="600" height="600"></canvas>
+
+  <div id="homeScreen">
+    <h1>Emoji Invaders</h1>
+    <button onclick="startGame()">▶ Play</button>
+    <button onclick="showShop()">🛍️ Shop</button>
+  </div>
+
+  <div id="shopScreen" class="hidden">
+    <h2>🛍️ Shop</h2>
+    <p>Total Coins: <span id="coinCount">0</span> 🟡</p>
+    <h3>🔫 Bullet Skins</h3>
+    <div id="bulletShop"></div>
+    <h3>🙂 Player Skins</h3>
+    <div id="playerShop"></div>
+    <button onclick="hideShop()">← Back</button>
+  </div>
+
+  <div id="ui" class="hidden">
+    <p>Score: <span id="score">0</span> | High Score: <span id="highScore">0</span></p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const ui = document.getElementById('ui');
+    const homeScreen = document.getElementById('homeScreen');
+    const shopScreen = document.getElementById('shopScreen');
+    const scoreEl = document.getElementById('score');
+    const highScoreEl = document.getElementById('highScore');
+    const coinCountEl = document.getElementById('coinCount');
+
+    const bulletSkins = [
+      { symbol: '.', color: 'white', price: 0 },
+      { symbol: '.', color: 'blue', price: 10 },
+      { symbol: '.', color: 'red', price: 10 },
+      { symbol: '.', color: 'purple', price: 25 },
+      { symbol: '.', color: 'green', price: 50 },
+    ];
+    const playerSkins = [
+      { emoji: '😀', price: 0 },
+      { emoji: '🤯', price: 25 },
+      { emoji: '🫥', price: 50 },
+      { emoji: '👽', price: 75 },
+    ];
+
+    let keys = {};
+    let bullets = [], enemies = [], enemyBullets = [], coins = [];
+    let player = { x: 300, y: 550, width: 30, height: 30, hp: 1 };
+    let score = 0, highScore = 0, coinsCollected = 0;
+    let canShoot = true, shootCooldown = 300;
+    let enemyCooldown = 1000;
+    let selectedBullet = 0, selectedPlayer = 0;
+    let ownedBullets = [0], ownedPlayers = [0];
+    let gameRunning = false;
+
+    function save() {
+      localStorage.setItem('highScore', highScore);
+      localStorage.setItem('coins', coinsCollected);
+      localStorage.setItem('ownedBullets', JSON.stringify(ownedBullets));
+      localStorage.setItem('ownedPlayers', JSON.stringify(ownedPlayers));
+      localStorage.setItem('selectedBullet', selectedBullet);
+      localStorage.setItem('selectedPlayer', selectedPlayer);
+    }
+
+    function load() {
+      highScore = +localStorage.getItem('highScore') || 0;
+      coinsCollected = +localStorage.getItem('coins') || 0;
+      ownedBullets = JSON.parse(localStorage.getItem('ownedBullets')) || [0];
+      ownedPlayers = JSON.parse(localStorage.getItem('ownedPlayers')) || [0];
+      selectedBullet = +localStorage.getItem('selectedBullet') || 0;
+      selectedPlayer = +localStorage.getItem('selectedPlayer') || 0;
+    }
+
+    function drawPlayer() {
+      ctx.font = '30px Arial';
+      ctx.fillText(playerSkins[selectedPlayer].emoji, player.x, player.y);
+    }
+
+    function drawEnemies() {
+      ctx.font = '30px Arial';
+      enemies.forEach(e => ctx.fillText('👾', e.x, e.y));
+    }
+
+    function drawBullets() {
+      bullets.forEach(b => {
+        ctx.fillStyle = bulletSkins[selectedBullet].color;
+        ctx.fillText(b.symbol, b.x, b.y);
+      });
+      enemyBullets.forEach(b => {
+        ctx.fillStyle = 'red';
+        ctx.fillText('|', b.x, b.y);
+      });
+    }
+
+    function drawCoins() {
+      ctx.font = '25px Arial';
+      coins.forEach(c => ctx.fillText('🟡', c.x, c.y));
+    }
+
+    function update() {
+      if (!gameRunning) return;
+
+      if (keys['ArrowLeft']) player.x -= 5;
+      if (keys['ArrowRight']) player.x += 5;
+      player.x = Math.max(0, Math.min(canvas.width - 30, player.x));
+
+      bullets.forEach(b => b.y -= 5);
+      bullets = bullets.filter(b => b.y > 0);
+
+      enemyBullets.forEach(b => b.y += 4);
+      enemyBullets = enemyBullets.filter(b => b.y < canvas.height);
+
+      enemies.forEach(e => {
+        if (Math.random() < 0.01) {
+          enemyBullets.push({ x: e.x + 10, y: e.y + 10 });
+        }
+      });
+
+      coins.forEach((coin, ci) => {
+        bullets.forEach((b, bi) => {
+          if (Math.abs(b.x - coin.x) < 15 && Math.abs(b.y - coin.y) < 15) {
+            coins.splice(ci, 1);
+            bullets.splice(bi, 1);
+            coinsCollected++;
+            coinCountEl.textContent = coinsCollected;
+            save();
+          }
+        });
+      });
+
+      enemies.forEach((e, ei) => {
+        bullets.forEach((b, bi) => {
+          if (Math.abs(b.x - e.x) < 25 && Math.abs(b.y - e.y) < 25) {
+            enemies.splice(ei, 1);
+            bullets.splice(bi, 1);
+            score++;
+            scoreEl.textContent = score;
+          }
+        });
+      });
+
+      enemyBullets.forEach(b => {
+        if (Math.abs(b.x - player.x) < 20 && Math.abs(b.y - player.y) < 20) {
+          endGame();
+        }
+      });
+
+      enemies.forEach(e => {
+        if (Math.abs(e.y - player.y) < 20) {
+          endGame();
+        }
+      });
+
+      render();
+      requestAnimationFrame(update);
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawPlayer();
+      drawEnemies();
+      drawBullets();
+      drawCoins();
+    }
+
+    function shoot() {
+      if (!canShoot) return;
+      canShoot = false;
+      bullets.push({ x: player.x + 10, y: player.y, symbol: bulletSkins[selectedBullet].symbol });
+      setTimeout(() => canShoot = true, shootCooldown);
+    }
+
+    function spawnEnemy() {
+      enemies.push({ x: Math.random() * 570, y: 30 });
+      if (gameRunning) setTimeout(spawnEnemy, enemyCooldown);
+    }
+
+    function spawnCoin() {
+      coins.push({ x: Math.random() * 570, y: Math.random() * 300 + 50 });
+      if (gameRunning) setTimeout(spawnCoin, 5000);
+    }
+
+    function endGame() {
+      gameRunning = false;
+      homeScreen.classList.remove('hidden');
+      ui.classList.add('hidden');
+      enemies = [];
+      bullets = [];
+      enemyBullets = [];
+      coins = [];
+      if (score > highScore) {
+        highScore = score;
+        save();
+      }
+      alert(`You died! Score: ${score}\nHigh Score: ${highScore}`);
+    }
+
+    function startGame() {
+      score = 0;
+      player.x = 300;
+      bullets = [];
+      enemies = [];
+      enemyBullets = [];
+      coins = [];
+      ui.classList.remove('hidden');
+      homeScreen.classList.add('hidden');
+      scoreEl.textContent = score;
+      highScoreEl.textContent = highScore;
+      gameRunning = true;
+      spawnEnemy();
+      spawnCoin();
+      update();
+    }
+
+    function showShop() {
+      shopScreen.classList.remove('hidden');
+      homeScreen.classList.add('hidden');
+      drawShop();
+    }
+
+    function hideShop() {
+      shopScreen.classList.add('hidden');
+      homeScreen.classList.remove('hidden');
+    }
+
+    function drawShop() {
+      coinCountEl.textContent = coinsCollected;
+      const bulletDiv = document.getElementById('bulletShop');
+      bulletDiv.innerHTML = '';
+      bulletSkins.forEach((skin, i) => {
+        const b = document.createElement('button');
+        b.textContent = `${skin.color} bullet - ${skin.price} 🟡`;
+        b.className = 'shopItem';
+        if (ownedBullets.includes(i)) {
+          b.textContent = `✔ ${skin.color}`;
+          if (selectedBullet === i) b.classList.add('selected');
+          b.onclick = () => {
+            selectedBullet = i;
+            save();
+            drawShop();
+          };
+        } else {
+          b.onclick = () => {
+            if (coinsCollected >= skin.price) {
+              coinsCollected -= skin.price;
+              ownedBullets.push(i);
+              selectedBullet = i;
+              save();
+              drawShop();
+            }
+          };
+        }
+        bulletDiv.appendChild(b);
+      });
+
+      const playerDiv = document.getElementById('playerShop');
+      playerDiv.innerHTML = '';
+      playerSkins.forEach((skin, i) => {
+        const p = document.createElement('button');
+        p.textContent = `${skin.emoji} - ${skin.price} 🟡`;
+        p.className = 'shopItem';
+        if (ownedPlayers.includes(i)) {
+          p.textContent = `✔ ${skin.emoji}`;
+          if (selectedPlayer === i) p.classList.add('selected');
+          p.onclick = () => {
+            selectedPlayer = i;
+            save();
+            drawShop();
+          };
+        } else {
+          p.onclick = () => {
+            if (coinsCollected >= skin.price) {
+              coinsCollected -= skin.price;
+              ownedPlayers.push(i);
+              selectedPlayer = i;
+              save();
+              drawShop();
+            }
+          };
+        }
+        playerDiv.appendChild(p);
+      });
+    }
+
+    document.addEventListener('keydown', e => {
+      keys[e.key] = true;
+      if (e.key === ' ') shoot();
+    });
+
+    document.addEventListener('keyup', e => keys[e.key] = false);
+
+    load();
+    drawShop();
+  </script>
+</body>
+</html>
